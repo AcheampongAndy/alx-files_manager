@@ -15,15 +15,11 @@ class RedisClient {
     constructor () {
         this.client = createClient();
         this.isClientConnected = true;
-
-        // Set up event listeners for connection handling
         this.client.on('error', (error) => {
-            console.log('Client failed to connect:', error.message || error);
+            console.log('Client failed to connect: ', error.message || error.toString());
             this.isClientConnected = false;
         });
-
         this.client.on('connect', () => {
-            console.log('Redis client connected successfully.');
             this.isClientConnected = true;
         });
     };
@@ -44,13 +40,9 @@ class RedisClient {
      * a string key as argument and 
      * returns the Redis value stored for this key
      */
+
     async get(key) {
-        try {
-            return await this.getAsync(key);
-        } catch (error) {
-            console.error(`Error fetching key "${key}":`, error.message || error);
-            return null;
-        }
+        return promisify(this.client.get).bind(this.client)(key);
     }
 
     /**
@@ -60,11 +52,8 @@ class RedisClient {
      * (with an expiration set by the duration argument)
      */
     async set(key, duration, value) {
-        try {
-            await this.setexAsync(key, duration, value);
-        } catch (error) {
-            console.error(`Error setting key "${key}":`, error.message || error);
-        }
+        await promisify(this.client.setex)
+        .bind(this.client)(key, duration, value);
     }
 
     /**
@@ -73,11 +62,8 @@ class RedisClient {
      * and remove the value in Redis for this key
      */
     async del(key) {
-        try {
-            await this.delAsync(key);
-        } catch (error) {
-            console.error(`Error deleting key "${key}":`, error.message || error);
-        }
+        await promisify(this.client.del)
+        .bind(this.client)(key);
     }
 
 }
