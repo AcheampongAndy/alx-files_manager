@@ -1,4 +1,4 @@
-// utils/db.js
+/** utils/db.js */
 import { MongoClient } from 'mongodb';
 
 /**
@@ -71,6 +71,6 @@ class DBClient {
     }
 }
 
-// create and export an instance of DBClient called dbClient.
+/** create and export an instance of DBClient called dbClient. */
 const dbClient = new DBClient();
 export default dbClient;
