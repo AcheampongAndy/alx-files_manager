@@ -1,101 +1,101 @@
-// controllers/FilesController.js
-import fs from 'fs';
-import path from 'path';
-import { promisify } from 'util';
-import { v4 as uuidv4 } from 'uuid';
-import redisClient from '../utils/redis.js';
-import dbClient from '../utils/db.js';
-
-const writeFileAsync = promisify(fs.writeFile);
-const mkdirAsync = promisify(fs.mkdir);
-const accessAsync = promisify(fs.access);
-
-const FOLDER_PATH = process.env.FOLDER_PATH || '/tmp/files_manager';
+const { v4: uuidv4 } = require('uuid');
+const { ObjectId } = require('mongodb');
+const fs = require('fs');
+const path = require('path');
+const dbClient = require('../utils/db');
+const redisClient = require('../utils/redis');
 
 class FilesController {
-    /**
-     * POST /files
-     * Create a new file in DB and on disk
-     */
-    static async postUpload(req, res) {
-        const token = req.headers['x-token'];
+  // POST /files: Create a new file
+  static async postUpload(req, res) {
+    const token = req.headers['x-token'];
 
-        if (!token) {
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        const userId = await redisClient.get(`auth_${token}`);
-        if (!userId) {
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
-
-        const { name, type, parentId = 0, isPublic = false, data } = req.body;
-
-        if (!name) {
-            return res.status(400).json({ error: 'Missing name' });
-        }
-
-        if (!type || !['folder', 'file', 'image'].includes(type)) {
-            return res.status(400).json({ error: 'Missing type' });
-        }
-
-        if (type !== 'folder' && !data) {
-            return res.status(400).json({ error: 'Missing data' });
-        }
-
-        if (parentId !== 0) {
-            const parentFile = await dbClient.db.collection('files').findOne({ _id: new dbClient.ObjectId(parentId) });
-
-            if (!parentFile) {
-                return res.status(400).json({ error: 'Parent not found' });
-            }
-
-            if (parentFile.type !== 'folder') {
-                return res.status(400).json({ error: 'Parent is not a folder' });
-            }
-        }
-
-        const fileData = {
-            userId: new dbClient.ObjectId(userId),
-            name,
-            type,
-            isPublic,
-            parentId: parentId !== 0 ? new dbClient.ObjectId(parentId) : 0,
-        };
-
-        if (type === 'folder') {
-            const result = await dbClient.db.collection('files').insertOne(fileData);
-            return res.status(201).json({
-                id: result.insertedId,
-                ...fileData,
-            });
-        }
-
-        // Ensure the storage folder exists
-        try {
-            await accessAsync(FOLDER_PATH);
-        } catch {
-            await mkdirAsync(FOLDER_PATH, { recursive: true });
-        }
-
-        const localPath = path.join(FOLDER_PATH, uuidv4());
-        const decodedData = Buffer.from(data, 'base64');
-
-        try {
-            await writeFileAsync(localPath, decodedData);
-        } catch (err) {
-            return res.status(500).json({ error: 'Could not save file to disk' });
-        }
-
-        fileData.localPath = localPath;
-
-        const result = await dbClient.db.collection('files').insertOne(fileData);
-
-        return res.status(201).json({
-            id: result.insertedId,
-            ...fileData,
-        });
+    // Check if the token is provided
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
     }
+
+    // Retrieve the user ID from Redis using the token
+    const userId = await redisClient.get(`auth_${token}`);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Retrieve file details from the request body
+    const { name, type, parentId = '0', isPublic = false, data } = req.body;
+
+    // Validate name and type
+    if (!name) {
+      return res.status(400).json({ error: 'Missing name' });
+    }
+
+    if (!['folder', 'file', 'image'].includes(type)) {
+      return res.status(400).json({ error: 'Missing type' });
+    }
+
+    if (type !== 'folder' && !data) {
+      return res.status(400).json({ error: 'Missing data' });
+    }
+
+    // Check parentId validity
+    if (parentId !== '0') {
+      const parentFile = await dbClient.db.collection('files').findOne({ _id: new ObjectId(parentId) });
+      if (!parentFile) {
+        return res.status(400).json({ error: 'Parent not found' });
+      }
+      if (parentFile.type !== 'folder') {
+        return res.status(400).json({ error: 'Parent is not a folder' });
+      }
+    }
+
+    // Initialize new file document
+    const newFile = {
+      userId: new ObjectId(userId),
+      name,
+      type,
+      isPublic,
+      parentId: parentId === '0' ? 0 : new ObjectId(parentId),
+      localPath: null,
+    };
+
+    // Handle file or image type
+    if (type !== 'folder') {
+      const folderPath = process.env.FOLDER_PATH || '/tmp/files_manager';
+      const fileName = uuidv4();
+      const filePath = path.join(folderPath, fileName);
+
+      // Ensure the folder exists
+      if (!fs.existsSync(folderPath)) {
+        fs.mkdirSync(folderPath, { recursive: true });
+      }
+
+      // Decode the base64 content and write to file
+      const fileData = Buffer.from(data, 'base64');
+      fs.writeFileSync(filePath, fileData);
+
+      // Add file path to the new file document
+      newFile.localPath = filePath;
+    }
+
+    try {
+      // Insert the new file into the database
+      const result = await dbClient.db.collection('files').insertOne(newFile);
+      newFile.id = result.insertedId;
+
+      // Return the newly created file details
+      res.status(201).json({
+        id: newFile.id,
+        userId: userId,
+        name: newFile.name,
+        type: newFile.type,
+        isPublic: newFile.isPublic,
+        parentId: newFile.parentId,
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Error creating file' });
+    }
+  }
 }
 
-export default FilesController;
+// Export the FilesController
+module.exports = FilesController;
