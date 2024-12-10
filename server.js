@@ -1,12 +1,12 @@
-// Import necessary modules
 const express = require('express');
 const routes = require('./routes/index');
 
 // Initialize an Express application
 const app = express();
 
-// Middleware to parse JSON request bodies
+// Middleware to parse JSON request bodies and handle authentication tokens
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Use routes
 app.use('/', routes);
