@@ -24,3 +24,6 @@ class AppController {
     }
   }
 }
+
+// Export the AppController
+module.exports = AppController;
