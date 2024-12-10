@@ -245,6 +245,49 @@ class FilesController {
             return res.status(500).json({ error: 'Internal server error' });
         }
     }
+
+    /**
+     * GET /files/:id/data
+     * Retrieve the content of a file by ID
+     */
+    static async getFile(req, res) {
+        const { id } = req.params;
+        const token = req.headers['x-token'];
+        let userId = null;
+
+        if (token) {
+            userId = await redisClient.get(`auth_${token}`);
+        }
+
+        try {
+            const file = await dbClient.db.collection('files').findOne({ _id: new dbClient.ObjectId(id) });
+
+            if (!file) {
+                return res.status(404).json({ error: 'Not found' });
+            }
+
+            if (file.type === 'folder') {
+                return res.status(400).json({ error: "A folder doesn't have content" });
+            }
+
+            if (!file.isPublic && (!userId || file.userId.toString() !== userId)) {
+                return res.status(403).json({ error: 'Unauthorized' });
+            }
+
+            const filePath = file.localPath;
+
+            // Retrieve file content
+            try {
+                const content = await fs.promises.readFile(filePath, 'utf-8');
+                return res.status(200).send(content);
+            } catch (error) {
+                return res.status(500).json({ error: 'Failed to read file content' });
+            }
+        } catch (error) {
+            return res.status(500).json({ error: 'Internal server error' });
+        }
+    }
+
 }
 
 export default FilesController;
