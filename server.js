@@ -1,18 +1,16 @@
-const express = require('express');
-const routes = require('./routes/index');
+// server.js
+import express from 'express';
+import routes from './routes/index.js';
 
-// Initialize an Express application
 const app = express();
+const PORT = process.env.PORT || 5000;
 
-// Middleware to parse JSON request bodies and handle authentication tokens
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Use routes
+// Load all routes
 app.use('/', routes);
 
-// Set the port and start the server
-const PORT = process.env.PORT || 5000;
+// Start the server
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
+
+export default app;
